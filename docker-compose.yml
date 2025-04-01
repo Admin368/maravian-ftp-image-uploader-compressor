@@ -1,0 +1,32 @@
+version: '3'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_UPLOAD_SERVER_URL=http://upload-server:3001
+    depends_on:
+      - upload-server
+
+  upload-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - FTP_HOST=${FTP_HOST}
+      - FTP_USER=${FTP_USER}
+      - FTP_PASSWORD=${FTP_PASSWORD}
+      - ALLOWED_ORIGINS=http://localhost:3000
+    volumes:
+      - upload-temp:/app/temp
+
+volumes:
+  upload-temp:
+

@@ -95,7 +95,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 50 * 1024 * 1024, // 50MB limit
   },
   fileFilter: (req, file, cb) => {
     // Add detailed logging
@@ -103,6 +103,7 @@ const upload = multer({
       originalname: file.originalname,
       mimetype: file.mimetype,
       fieldname: file.fieldname,
+      size: file.size,
     });
 
     // Accept only image files
@@ -117,6 +118,20 @@ const upload = multer({
       }
     }
   },
+});
+
+// Add error handling middleware for multer
+app.use((err: any, req: Request, res: any, next: any) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        error:
+          "File too large. Maximum size is 50MB. If you're still seeing this error, please check with your server administrator as there might be additional size limits set at the web server level.",
+      });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  next(err);
 });
 
 // Helper function to create directory if it doesn't exist

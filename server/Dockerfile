@@ -1,20 +1,26 @@
-FROM node:20-alpine
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Copy package files
 COPY package*.json ./
-RUN npm install
+COPY pnpm-lock.yaml ./
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Install dependencies
+RUN pnpm install
 
 # Copy source code
 COPY . .
 
 # Build TypeScript
-RUN npm run build
+RUN pnpm build
 
-# Expose the port the app runs on
+# Expose port
 EXPOSE 3001
 
-# Command to run the application
-CMD ["npm", "start"]
+# Start the server
+CMD ["node", "dist/index.js"]
 

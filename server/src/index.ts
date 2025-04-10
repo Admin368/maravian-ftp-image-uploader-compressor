@@ -7,6 +7,7 @@ import os from "os";
 import sharp from "sharp";
 import * as ftp from "basic-ftp";
 import dotenv from "dotenv";
+import { authenticateApi } from "./middleware/auth";
 
 // Load environment variables
 dotenv.config();
@@ -33,6 +34,9 @@ app.use(
 );
 
 app.use(express.json());
+
+// Apply authentication middleware to all routes
+app.use(authenticateApi);
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -247,10 +251,17 @@ async function uploadToFtp(
     host: process.env.FTP_HOST || "",
     user: process.env.FTP_USER || "",
     password: process.env.FTP_PASSWORD || "",
-    secure: false,
+    secure: true,
   };
 
-  console.log("FTP credentials:", credentials);
+  // Get domain prefix from environment variables
+  const domainPrefix = process.env.DOMAIN_PREFIX || "";
+  const pagePassword = process.env.PAGE_PASSWORD || "";
+
+  console.log("FTP credentials:", {
+    ...credentials,
+    password: "********", // Hide password in logs
+  });
 
   try {
     // Verify local files exist before attempting upload

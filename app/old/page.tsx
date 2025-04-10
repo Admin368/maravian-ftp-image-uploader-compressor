@@ -9,6 +9,7 @@ export default function Home() {
       <PhotoUploader
         username="paul_photos"
         uploadServerUrl={"http://192.168.1.168:3001"}
+        folder="paul_photos"
         onUploadComplete={(paths) => {
           console.log("Upload completed:", paths);
         }}

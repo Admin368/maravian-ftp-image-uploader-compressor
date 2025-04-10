@@ -43,7 +43,7 @@ interface FileWithPreview extends File {
 
 export function PhotoUploader({
   username,
-  uploadServerUrl = "http://192.168.1.168:3001",
+  uploadServerUrl = process.env.SERVER_URL || "",
   onUploadComplete,
   compressionMethod = "dimension",
   targetWidth = 1600,

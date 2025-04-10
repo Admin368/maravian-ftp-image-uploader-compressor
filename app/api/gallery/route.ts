@@ -12,9 +12,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const response = await fetch(
-      `https://files.maravianwebservices.com/${username}`
-    );
+    const response = await fetch(`${process.env.DOMAIN_PREFIX}/${username}`);
     const data = await response.json();
 
     return NextResponse.json(data);

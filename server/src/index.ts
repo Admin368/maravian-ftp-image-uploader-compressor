@@ -39,18 +39,9 @@ app.use(
     credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204,
+    maxAge: 86400, // 24 hours
   })
 );
-
-// Add a specific OPTIONS handler for the upload endpoint
-app.options("/upload", (req, res) => {
-  res.status(204).end();
-});
-
-// Add a general OPTIONS handler for all routes
-app.options("*", (req, res) => {
-  res.status(204).end();
-});
 
 // Add debugging middleware for CORS
 app.use((req, res, next) => {
@@ -63,6 +54,16 @@ app.use((req, res, next) => {
     `[CORS Debug] Access-Control-Request-Headers: ${req.headers["access-control-request-headers"]}`
   );
   next();
+});
+
+// Add a specific OPTIONS handler for the upload endpoint
+app.options("/upload", (req, res) => {
+  res.status(204).end();
+});
+
+// Add a general OPTIONS handler for all routes
+app.options("*", (req, res) => {
+  res.status(204).end();
 });
 
 app.use(express.json());

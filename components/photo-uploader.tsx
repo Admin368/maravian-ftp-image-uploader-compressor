@@ -186,7 +186,12 @@ export function PhotoUploader({
         });
 
         if (!response.ok) {
-          throw new Error(`Upload failed: ${response.statusText}`);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            `Upload failed: ${response.status} ${response.statusText}${
+              errorData.error ? ` - ${errorData.error}` : ""
+            }`
+          );
         }
 
         const data = await response.json();

@@ -93,6 +93,29 @@ async function ensureDir(dirPath: string) {
   }
 }
 
+// Function to copy index.php to a user folder
+async function copyIndexPhpToFolder(folderPath: string) {
+  try {
+    const sourceIndexPath = path.join(__dirname, "index.php");
+    const targetIndexPath = path.join(folderPath, "index.php");
+
+    // Check if index.php already exists in the target folder
+    try {
+      await fsPromises.access(targetIndexPath);
+      console.log(`index.php already exists in ${folderPath}`);
+      return; // File already exists, no need to copy
+    } catch (err) {
+      // File doesn't exist, proceed with copying
+      console.log(`Copying index.php to ${folderPath}`);
+      await fsPromises.copyFile(sourceIndexPath, targetIndexPath);
+      console.log(`Successfully copied index.php to ${folderPath}`);
+    }
+  } catch (error) {
+    console.error(`Error copying index.php to ${folderPath}:`, error);
+    // Don't throw the error to avoid blocking the upload process
+  }
+}
+
 // Validate username format
 function isValidUsername(username: string): boolean {
   return /^[a-zA-Z0-9_]+$/.test(username);
@@ -103,6 +126,11 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     console.log("Request body:", req.body);
     console.log("Request file:", req.file);
+
+    const compression_method = req.body.compression_method || "dimension"; // dimension or size
+    const target_size = req.body.target_size || 1 * 1024 * 1024; // 1MB
+    const target_width = req.body.target_width || 1600;
+    const target_height = req.body.target_height || undefined;
 
     const file = req.file;
     const metadata = req.body.metadata ? JSON.parse(req.body.metadata) : {};
@@ -138,6 +166,11 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     await ensureDir(userDir);
     await ensureDir(folderDir);
 
+    // Copy index.php to the user folder
+    await copyIndexPhpToFolder(userDir);
+    // Copy index.php to the specific folder
+    // await copyIndexPhpToFolder(folderDir);
+
     // Move file to final destination
     const finalPath = path.join(folderDir, file.filename);
     await fsPromises.rename(file.path, finalPath);
@@ -161,10 +194,18 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     if (imageInfo.size && imageInfo.size > 2 * 1024 * 1024) {
       // Optimize large images
-      await sharp(file.path)
-        .resize(800)
-        .jpeg({ quality: 80 })
-        .toFile(thumbnailPath);
+      switch (compression_method) {
+        case "size":
+          await optimizeToTargetSize(file.path, thumbnailPath, target_size);
+          break;
+        default:
+          await optimizeToTargetDimensions({
+            inputPath: file.path,
+            outputPath: thumbnailPath,
+            targetWidth: target_width,
+            // targetHeight: target_height,
+          });
+      }
     } else {
       // Create regular thumbnail for smaller images
       await sharp(file.path).resize(400).toFile(thumbnailPath);
@@ -281,6 +322,29 @@ async function uploadToFtp(
       `${thumbnailDirPath}/${thumbnailFilename}`
     );
 
+    // Upload index.php to user folder and specific folder
+    const sourceIndexPath = path.join(__dirname, "index.php");
+
+    // Check if index.php exists locally
+    try {
+      await fsPromises.access(sourceIndexPath);
+
+      // Upload index.php to user folder
+      console.log("\nUploading index.php to user folder:");
+      console.log(`From local: ${sourceIndexPath}`);
+      console.log(`To FTP: ${basePath}/index.php`);
+      await client.uploadFrom(sourceIndexPath, `${basePath}/index.php`);
+
+      // Upload index.php to specific folder
+      console.log("\nUploading index.php to specific folder:");
+      console.log(`From local: ${sourceIndexPath}`);
+      console.log(`To FTP: ${folderPath}/index.php`);
+      await client.uploadFrom(sourceIndexPath, `${folderPath}/index.php`);
+    } catch (err) {
+      console.error("Error uploading index.php:", err);
+      // Don't throw the error to avoid blocking the upload process
+    }
+
     console.log("\nUpload completed successfully!");
     console.log("======================");
   } catch (err: any) {
@@ -308,3 +372,81 @@ app.get("/health", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+async function optimizeToTargetSize(
+  inputPath: string,
+  outputPath: string,
+  targetSizeInBytes: number,
+  minQuality = 60,
+  maxQuality = 90,
+  maxWidth = 1600
+) {
+  const image = sharp(inputPath);
+  const metadata = await image.metadata();
+
+  let quality = maxQuality;
+  let width = metadata.width || maxWidth;
+  let currentSize = Infinity;
+  let attempts = 0;
+  const maxAttempts = 8; // Prevent infinite loops
+
+  // Binary search for the right quality/size balance
+  while (
+    Math.abs(currentSize - targetSizeInBytes) > targetSizeInBytes * 0.1 &&
+    attempts < maxAttempts
+  ) {
+    const buffer = await sharp(inputPath)
+      .resize(width, undefined, { fit: "inside" })
+      .jpeg({ quality })
+      .toBuffer();
+
+    currentSize = buffer.length;
+
+    if (currentSize > targetSizeInBytes) {
+      // If file is too big, try reducing quality first
+      if (quality > minQuality) {
+        quality = Math.max(minQuality, quality - 5);
+      } else {
+        // If at minimum quality, reduce dimensions
+        width = Math.max(400, Math.floor(width * 0.8));
+      }
+    } else if (currentSize < targetSizeInBytes * 0.8) {
+      // If file is too small, try increasing quality
+      quality = Math.min(maxQuality, quality + 5);
+    }
+
+    attempts++;
+  }
+
+  // Final optimization with found parameters
+  return sharp(inputPath)
+    .resize(width, undefined, { fit: "inside" })
+    .jpeg({ quality })
+    .toFile(outputPath);
+}
+
+async function optimizeToTargetDimensions({
+  inputPath,
+  outputPath,
+  targetWidth = 1600,
+}: // targetHeight,
+{
+  inputPath: string;
+  outputPath: string;
+  targetWidth: number;
+  // targetHeight?: number;
+}) {
+  const image = sharp(inputPath);
+  const metadata = await image.metadata();
+
+  const width = metadata.width || targetWidth;
+  // const height = metadata.height || targetHeight;
+
+  return (
+    sharp(inputPath)
+      // .resize(width, height, { fit: "inside" })
+      .resize(width)
+      .jpeg({ quality: 80 })
+      .toFile(outputPath)
+  );
+}

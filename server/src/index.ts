@@ -28,6 +28,7 @@ const PORT = process.env.PORT || 3001;
 app.use(
   cors({
     origin: [
+      "https://uploader.maravian.com",
       "https://uploader.maravian.online",
       "https://main.maravian.online",
       "http://192.168.1.168:3000",
@@ -44,6 +45,24 @@ app.use(
 // Add a specific OPTIONS handler for the upload endpoint
 app.options("/upload", (req, res) => {
   res.status(204).end();
+});
+
+// Add a general OPTIONS handler for all routes
+app.options("*", (req, res) => {
+  res.status(204).end();
+});
+
+// Add debugging middleware for CORS
+app.use((req, res, next) => {
+  console.log(`[CORS Debug] ${req.method} ${req.url}`);
+  console.log(`[CORS Debug] Origin: ${req.headers.origin}`);
+  console.log(
+    `[CORS Debug] Access-Control-Request-Method: ${req.headers["access-control-request-method"]}`
+  );
+  console.log(
+    `[CORS Debug] Access-Control-Request-Headers: ${req.headers["access-control-request-headers"]}`
+  );
+  next();
 });
 
 app.use(express.json());

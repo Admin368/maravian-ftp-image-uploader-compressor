@@ -24,6 +24,12 @@ interface PhotoUploaderProps {
   username: string;
   uploadServerUrl?: string;
   onUploadComplete?: (paths: string[]) => void;
+  compressionMethod?: "size" | "dimension";
+  targetWidth?: number;
+  targetHeight?: number;
+  targetSize?: number;
+  folder: string;
+  onFolderChange?: (folder: string) => void;
 }
 
 interface FileWithPreview extends File {
@@ -39,15 +45,25 @@ export function PhotoUploader({
   username,
   uploadServerUrl = "http://192.168.1.168:3001",
   onUploadComplete,
+  compressionMethod = "dimension",
+  targetWidth = 1600,
+  targetHeight,
+  targetSize,
+  folder,
+  onFolderChange,
 }: PhotoUploaderProps) {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
-  const [currentFolder, setCurrentFolder] = useState("folder_1");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [folders, setFolders] = useState<string[]>(["folder_1"]);
+  const [folders, setFolders] = useState<string[]>([folder]);
   const [newFolderName, setNewFolderName] = useState("");
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [localCompressionMethod, setLocalCompressionMethod] =
+    useState(compressionMethod);
+  const [localTargetWidth, setLocalTargetWidth] = useState(targetWidth);
+  const [localTargetHeight, setLocalTargetHeight] = useState(targetHeight);
+  const [localTargetSize, setLocalTargetSize] = useState(targetSize || 1024);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -63,7 +79,7 @@ export function PhotoUploader({
           id: `${file.name}-${Date.now()}`,
           status: "pending" as const,
           progress: 0,
-          folder: currentFolder,
+          folder: folder,
           // Store the original file for upload
           _file: originalFile,
         };
@@ -76,7 +92,7 @@ export function PhotoUploader({
         fileInputRef.current.value = "";
       }
     },
-    [currentFolder]
+    [folder]
   );
 
   const removeFile = useCallback((id: string) => {
@@ -89,11 +105,13 @@ export function PhotoUploader({
   const addFolder = useCallback(() => {
     if (newFolderName && !folders.includes(newFolderName)) {
       setFolders((prev) => [...prev, newFolderName]);
-      setCurrentFolder(newFolderName);
+      if (onFolderChange) {
+        onFolderChange(newFolderName);
+      }
       setNewFolderName("");
       setFolderDialogOpen(false);
     }
-  }, [newFolderName, folders]);
+  }, [newFolderName, folders, onFolderChange]);
 
   const uploadFiles = async () => {
     if (files.length === 0 || isUploading) return;
@@ -113,14 +131,15 @@ export function PhotoUploader({
     for (const file of files) {
       try {
         const formData = new FormData();
-        // Include username and folder in the file field name
         formData.append(`file`, file._file);
-        // Add these as hidden fields and in the field name
         formData.append(
           "metadata",
           JSON.stringify({
             username,
             folder: file.folder,
+            compressionMethod,
+            targetWidth,
+            targetHeight,
           })
         );
 
@@ -131,6 +150,9 @@ export function PhotoUploader({
           metadata: {
             username,
             folder: file.folder,
+            compressionMethod,
+            targetWidth,
+            targetHeight,
           },
         });
 
@@ -186,20 +208,20 @@ export function PhotoUploader({
 
         <div className="flex items-center gap-2">
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+            <DropdownMenuTrigger disabled={true} asChild>
               <Button variant="outline" className="flex items-center gap-2">
                 <Folder className="h-4 w-4" />
-                {currentFolder}
+                {folder}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {folders.map((folder) => (
+              {folders.map((f) => (
                 <DropdownMenuItem
-                  key={folder}
-                  onClick={() => setCurrentFolder(folder)}
-                  className={currentFolder === folder ? "bg-muted" : ""}
+                  key={f}
+                  onClick={() => onFolderChange?.(f)}
+                  className={folder === f ? "bg-muted" : ""}
                 >
-                  {folder}
+                  {f}
                 </DropdownMenuItem>
               ))}
               <DropdownMenuItem onClick={() => setFolderDialogOpen(true)}>
@@ -243,6 +265,62 @@ export function PhotoUploader({
             />
           </div>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Compression Method</label>
+          <select
+            className="w-full p-2 border rounded"
+            value={localCompressionMethod}
+            onChange={(e) =>
+              setLocalCompressionMethod(e.target.value as "size" | "dimension")
+            }
+          >
+            <option value="size">Size</option>
+            <option value="dimension">Dimension</option>
+          </select>
+        </div>
+        {localCompressionMethod === "dimension" ? (
+          <>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Target Width</label>
+              <Input
+                type="number"
+                value={localTargetWidth}
+                onChange={(e) => setLocalTargetWidth(Number(e.target.value))}
+                min="1"
+                max="10000"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Target Height</label>
+              <Input
+                type="number"
+                value={localTargetHeight}
+                onChange={(e) => setLocalTargetHeight(Number(e.target.value))}
+                min="1"
+                max="10000"
+              />
+            </div>
+          </>
+        ) : (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Target Size (KB)</label>
+            <Input
+              type="number"
+              value={localTargetSize / 1024}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                if (!isNaN(value)) {
+                  setLocalTargetSize(value * 1024);
+                }
+              }}
+              min="1"
+              max="10000"
+            />
+          </div>
+        )}
       </div>
 
       {files.length > 0 && (

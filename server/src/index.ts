@@ -186,7 +186,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     await ensureDir(thumbnailDir);
 
     // Generate thumbnail filename
-    const thumbnailFilename = `tn_${file.filename}`;
+    const thumbnailFilename = `tn___${file.filename}`;
     const thumbnailPath = path.join(thumbnailDir, thumbnailFilename);
 
     // Process image and create thumbnail
@@ -336,10 +336,10 @@ async function uploadToFtp(
       await client.uploadFrom(sourceIndexPath, `${basePath}/index.php`);
 
       // Upload index.php to specific folder
-      console.log("\nUploading index.php to specific folder:");
-      console.log(`From local: ${sourceIndexPath}`);
-      console.log(`To FTP: ${folderPath}/index.php`);
-      await client.uploadFrom(sourceIndexPath, `${folderPath}/index.php`);
+      // console.log("\nUploading index.php to specific folder:");
+      // console.log(`From local: ${sourceIndexPath}`);
+      // console.log(`To FTP: ${folderPath}/index.php`);
+      // await client.uploadFrom(sourceIndexPath, `${folderPath}/index.php`);
     } catch (err) {
       console.error("Error uploading index.php:", err);
       // Don't throw the error to avoid blocking the upload process

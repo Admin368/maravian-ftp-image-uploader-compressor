@@ -17,16 +17,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
           "thumbnail_count" => 0,
           "image_urls" => array(),
           "thumbnail_urls" => array(),
+          "image_sizes" => array(),
+          "thumbnail_sizes" => array(),
       );
       if (count($images) > 0) {
         $folder_data[$subdir]["image_urls"] = array_map(function($image) use ($subdir) {
           return "https://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'] . $subdir . '/' . rawurlencode(str_replace($subdir.'/', '', $image));
+        }, $images);
+        $folder_data[$subdir]["image_sizes"] = array_map(function($image) {
+          return filesize($image);
         }, $images);
         $folder_data[$subdir]["image_count"] = count($images);
       }
       if (count($thumbnails) > 0) {
         $folder_data[$subdir]["thumbnail_urls"] = array_map(function($thumbnail) use ($subdir) {
           return "https://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'] . $subdir . '/thumbnails/' . rawurlencode(str_replace($subdir.'/thumbnails/', '', $thumbnail));
+        }, $thumbnails);
+        $folder_data[$subdir]["thumbnail_sizes"] = array_map(function($thumbnail) {
+          return filesize($thumbnail);
         }, $thumbnails);
         $folder_data[$subdir]["thumbnail_count"] = count($thumbnails);
       }

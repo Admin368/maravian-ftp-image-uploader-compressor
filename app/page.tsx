@@ -1,18 +1,25 @@
 "use client";
 
-import { PhotoUploader } from "@/components/photo-uploader";
+import Link from "next/link";
 
 export default function Home() {
+  // This would be replaced with actual API call
+  const usernames = ["paul_photos"]; // Example username
+
   return (
-    <main className="container mx-auto py-10">
-      <h1 className="text-2xl font-bold mb-6">Photo Upload System</h1>
-      <PhotoUploader
-        username="paul_photos"
-        uploadServerUrl={"http://192.168.1.168:3001"}
-        onUploadComplete={(paths) => {
-          console.log("Upload completed:", paths);
-        }}
-      />
+    <main className="min-h-screen p-8">
+      <h1 className="text-4xl font-bold mb-8">Photo Galleries</h1>
+      <div className="grid gap-4">
+        {usernames.map((username) => (
+          <Link
+            key={username}
+            href={`/${username}`}
+            className="p-4 bg-white rounded-lg shadow hover:shadow-lg transition-shadow"
+          >
+            <h2 className="text-2xl font-semibold">{username}</h2>
+          </Link>
+        ))}
+      </div>
     </main>
   );
 }

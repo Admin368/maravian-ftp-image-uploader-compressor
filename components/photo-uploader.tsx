@@ -181,6 +181,8 @@ export function PhotoUploader({
           headers: {
             "x-api-key": apiKey,
           },
+          credentials: "include",
+          mode: "cors",
         });
 
         if (!response.ok) {

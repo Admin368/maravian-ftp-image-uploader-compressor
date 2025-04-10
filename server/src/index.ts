@@ -27,11 +27,24 @@ const PORT = process.env.PORT || 3001;
 // Enable CORS
 app.use(
   cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
-    methods: ["GET", "POST"],
+    origin: [
+      "https://uploader.maravian.online",
+      "https://main.maravian.online",
+      "http://192.168.1.168:3000",
+      "http://localhost:3000",
+    ],
+    methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   })
 );
+
+// Add a specific OPTIONS handler for the upload endpoint
+app.options("/upload", (req, res) => {
+  res.status(204).end();
+});
 
 app.use(express.json());
 

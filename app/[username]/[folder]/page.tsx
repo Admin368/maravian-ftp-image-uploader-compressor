@@ -25,6 +25,8 @@ const calculateCompression = (original: number, thumbnail: number): string => {
   return `${percentage.toFixed(1)}%`;
 };
 
+const url = process.env.NEXT_PUBLIC_SERVER_URL;
+
 export default function FolderPage() {
   const [images, setImages] = useState<ImageData[]>([]);
   const [showThumbnails, setShowThumbnails] = useState(true);
@@ -114,7 +116,6 @@ export default function FolderPage() {
   //     </main>
   //   );
   // }
-
   return (
     <main className="min-h-screen p-8">
       <h1 className="text-4xl font-bold mb-8">{params.folder}</h1>
@@ -122,8 +123,10 @@ export default function FolderPage() {
       {/* Upload Section */}
       <div className="mb-8 p-4 bg-white rounded-lg shadow">
         <h2 className="text-2xl font-semibold mb-4">Upload Images</h2>
+        URL:{JSON.stringify(url)}
         <PhotoUploader
           folder={folder as string}
+          uploadServerUrl={url}
           username={username as string}
           compressionMethod={compressionMethod}
           targetWidth={

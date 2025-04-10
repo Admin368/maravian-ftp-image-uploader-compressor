@@ -8,6 +8,7 @@ export const authenticateApi = (
   const apiKey = req.headers["x-api-key"];
   const pagePassword = process.env.PAGE_PASSWORD;
 
+  console.log({ apiKey, pagePassword });
   if (!apiKey || apiKey !== pagePassword) {
     return res.status(401).json({ error: "Unauthorized access" });
   }

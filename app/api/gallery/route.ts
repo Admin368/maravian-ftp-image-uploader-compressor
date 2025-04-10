@@ -12,7 +12,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    const response = await fetch(`${process.env.DOMAIN_PREFIX}/${username}`);
+    const url = process.env.DOMAIN_PREFIX + "/" + username;
+    console.log(url);
+    const response = await fetch(url);
     const data = await response.json();
 
     return NextResponse.json(data);

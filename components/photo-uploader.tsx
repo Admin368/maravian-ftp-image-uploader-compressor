@@ -43,7 +43,7 @@ interface FileWithPreview extends File {
 
 export function PhotoUploader({
   username,
-  uploadServerUrl = process.env.SERVER_URL || "",
+  uploadServerUrl = process.env.NEXT_PUBLIC_SERVER_URL || "",
   onUploadComplete,
   compressionMethod = "dimension",
   targetWidth = 1600,
@@ -128,6 +128,24 @@ export function PhotoUploader({
       prev.map((file) => ({ ...file, status: "uploading" as const }))
     );
 
+    // Fetch the API key first
+    let apiKey: string;
+    try {
+      const keyResponse = await fetch("/api/upload-key");
+      if (!keyResponse.ok) {
+        throw new Error("Failed to get API key");
+      }
+      const keyData = await keyResponse.json();
+      apiKey = keyData.key;
+    } catch (error) {
+      console.error("Error fetching API key:", error);
+      setFiles((prev) =>
+        prev.map((file) => ({ ...file, status: "error" as const }))
+      );
+      setIsUploading(false);
+      return;
+    }
+
     for (const file of files) {
       try {
         const formData = new FormData();
@@ -155,10 +173,14 @@ export function PhotoUploader({
             targetHeight,
           },
         });
+        console.log(uploadServerUrl);
 
         const response = await fetch(`${uploadServerUrl}/upload`, {
           method: "POST",
           body: formData,
+          headers: {
+            "x-api-key": apiKey,
+          },
         });
 
         if (!response.ok) {

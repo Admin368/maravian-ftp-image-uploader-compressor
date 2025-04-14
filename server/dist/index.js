@@ -45,35 +45,56 @@ const os_1 = __importDefault(require("os"));
 const sharp_1 = __importDefault(require("sharp"));
 const ftp = __importStar(require("basic-ftp"));
 const dotenv_1 = __importDefault(require("dotenv"));
+const auth_1 = require("./middleware/auth");
 // Load environment variables
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3001;
 // Enable CORS
 app.use((0, cors_1.default)({
-    origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    origin: [
+        "https://uploader.maravian.com",
+        "https://uploader.maravian.online",
+        "https://main.maravian.online",
+        "http://192.168.1.168:3000",
+        "http://localhost:3000",
+    ],
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    maxAge: 86400, // 24 hours
 }));
+// Add debugging middleware for CORS
+app.use((req, res, next) => {
+    console.log(`[CORS Debug] ${req.method} ${req.url}`);
+    console.log(`[CORS Debug] Origin: ${req.headers.origin}`);
+    console.log(`[CORS Debug] Access-Control-Request-Method: ${req.headers["access-control-request-method"]}`);
+    console.log(`[CORS Debug] Access-Control-Request-Headers: ${req.headers["access-control-request-headers"]}`);
+    next();
+});
+// Add a specific OPTIONS handler for the upload endpoint
+app.options("/upload", (req, res) => {
+    res.status(204).end();
+});
+// Add a general OPTIONS handler for all routes
+app.options("*", (req, res) => {
+    res.status(204).end();
+});
 app.use(express_1.default.json());
+// Apply authentication middleware to all routes
+app.use(auth_1.authenticateApi);
 // Configure multer for file uploads
 const storage = multer_1.default.diskStorage({
     destination: async (req, file, cb) => {
-        const username = req.body.username;
-        const folder = req.body.folder;
-        if (!username || !folder) {
-            return cb(new Error("Missing username or folder"), "");
-        }
-        const uploadDir = path_1.default.join(os_1.default.tmpdir(), "uploads");
-        const userDir = path_1.default.join(uploadDir, username);
-        const folderDir = path_1.default.join(userDir, folder);
         try {
+            const uploadDir = path_1.default.join(os_1.default.tmpdir(), "uploads");
             await ensureDir(uploadDir);
-            await ensureDir(userDir);
-            await ensureDir(folderDir);
-            cb(null, folderDir);
+            cb(null, uploadDir);
         }
         catch (error) {
+            console.error("Error creating upload directory:", error);
             cb(error, "");
         }
     },
@@ -81,29 +102,49 @@ const storage = multer_1.default.diskStorage({
         const fileExtension = path_1.default.extname(file.originalname);
         const baseFilename = path_1.default.basename(file.originalname, fileExtension);
         const timestamp = Date.now();
-        const uniqueFilename = `${baseFilename}-${timestamp}${fileExtension}`;
+        // const uniqueFilename = `${baseFilename}-${timestamp}${fileExtension}`;
+        const uniqueFilename = `${baseFilename}${fileExtension}`;
         cb(null, uniqueFilename);
     },
 });
 const upload = (0, multer_1.default)({
     storage,
     limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB limit
+        fileSize: 50 * 1024 * 1024, // 50MB limit
     },
     fileFilter: (req, file, cb) => {
+        // Add detailed logging
+        console.log("Multer processing file:", {
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            fieldname: file.fieldname,
+            size: file.size,
+        });
         // Accept only image files
         if (file.mimetype.startsWith("image/")) {
+            console.log("File accepted: Valid image type");
             cb(null, true);
         }
         else {
-            // Pass null as first argument and false as second argument
+            console.log("File rejected: Not an image type");
             cb(null, false);
-            // You can still create an error on the request object if needed
             if (req.fileValidationError === undefined) {
                 req.fileValidationError = "Only image files are allowed";
             }
         }
     },
+});
+// Add error handling middleware for multer
+app.use((err, req, res, next) => {
+    if (err instanceof multer_1.default.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(413).json({
+                error: "File too large. Maximum size is 50MB. If you're still seeing this error, please check with your server administrator as there might be additional size limits set at the web server level.",
+            });
+        }
+        return res.status(400).json({ error: err.message });
+    }
+    next(err);
 });
 // Helper function to create directory if it doesn't exist
 async function ensureDir(dirPath) {
@@ -115,6 +156,29 @@ async function ensureDir(dirPath) {
         throw error;
     }
 }
+// Function to copy index.php to a user folder
+async function copyIndexPhpToFolder(folderPath) {
+    try {
+        const sourceIndexPath = path_1.default.join(__dirname, "index.php");
+        const targetIndexPath = path_1.default.join(folderPath, "index.php");
+        // Check if index.php already exists in the target folder
+        try {
+            await fs_1.promises.access(targetIndexPath);
+            console.log(`index.php already exists in ${folderPath}`);
+            return; // File already exists, no need to copy
+        }
+        catch (err) {
+            // File doesn't exist, proceed with copying
+            console.log(`Copying index.php to ${folderPath}`);
+            await fs_1.promises.copyFile(sourceIndexPath, targetIndexPath);
+            console.log(`Successfully copied index.php to ${folderPath}`);
+        }
+    }
+    catch (error) {
+        console.error(`Error copying index.php to ${folderPath}:`, error);
+        // Don't throw the error to avoid blocking the upload process
+    }
+}
 // Validate username format
 function isValidUsername(username) {
     return /^[a-zA-Z0-9_]+$/.test(username);
@@ -122,28 +186,73 @@ function isValidUsername(username) {
 // Endpoint for file uploads
 app.post("/upload", upload.single("file"), async (req, res) => {
     try {
+        console.log("Request body:", req.body);
+        console.log("Request file:", req.file);
+        const compression_method = req.body.compression_method || "dimension"; // dimension or size
+        const target_size = req.body.target_size || 1 * 1024 * 1024; // 1MB
+        const target_width = req.body.target_width || 1600;
+        const target_height = req.body.target_height || undefined;
         const file = req.file;
-        const username = req.body.username;
-        const folder = req.body.folder;
+        const metadata = req.body.metadata ? JSON.parse(req.body.metadata) : {};
+        const username = metadata.username;
+        const folder = metadata.folder;
+        console.log("=== Upload Request Debug ===");
+        console.log("Metadata:", metadata);
+        console.log("File details:", file
+            ? {
+                fieldname: file.fieldname,
+                originalname: file.originalname,
+                encoding: file.encoding,
+                mimetype: file.mimetype,
+                size: file.size,
+                destination: file.destination,
+                filename: file.filename,
+                path: file.path,
+            }
+            : "No file");
+        console.log("=========================");
         if (!file || !username || !folder) {
             return res.status(400).json({ error: "Missing required fields" });
         }
+        // Create user and folder directories
+        const userDir = path_1.default.join(file.destination, username);
+        const folderDir = path_1.default.join(userDir, folder);
+        await ensureDir(userDir);
+        await ensureDir(folderDir);
+        // Copy index.php to the user folder
+        await copyIndexPhpToFolder(userDir);
+        // Copy index.php to the specific folder
+        // await copyIndexPhpToFolder(folderDir);
+        // Move file to final destination
+        const finalPath = path_1.default.join(folderDir, file.filename);
+        await fs_1.promises.rename(file.path, finalPath);
+        file.path = finalPath;
         // Validate username
         if (!isValidUsername(username)) {
             return res.status(400).json({ error: "Invalid username format" });
         }
         // Create thumbnail directory
-        const folderDir = path_1.default.dirname(file.path);
         const thumbnailDir = path_1.default.join(folderDir, "thumbnails");
         await ensureDir(thumbnailDir);
         // Generate thumbnail filename
-        const thumbnailFilename = `tn_${file.filename}`;
+        const thumbnailFilename = `tn___${file.filename}`;
         const thumbnailPath = path_1.default.join(thumbnailDir, thumbnailFilename);
         // Process image and create thumbnail
         const imageInfo = await (0, sharp_1.default)(file.path).metadata();
         if (imageInfo.size && imageInfo.size > 2 * 1024 * 1024) {
             // Optimize large images
-            await (0, sharp_1.default)(file.path).resize(800).jpeg({ quality: 80 }).toFile(thumbnailPath);
+            switch (compression_method) {
+                case "size":
+                    await optimizeToTargetSize(file.path, thumbnailPath, target_size);
+                    break;
+                default:
+                    await optimizeToTargetDimensions({
+                        inputPath: file.path,
+                        outputPath: thumbnailPath,
+                        targetWidth: target_width,
+                        // targetHeight: target_height,
+                    });
+            }
         }
         else {
             // Create regular thumbnail for smaller images
@@ -167,27 +276,107 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 async function uploadToFtp(username, folder, originalPath, thumbnailPath, filename) {
     const client = new ftp.Client();
     client.ftp.verbose = process.env.NODE_ENV === "development";
+    const credentials = {
+        host: process.env.FTP_HOST || "",
+        user: process.env.FTP_USER || "",
+        password: process.env.FTP_PASSWORD || "",
+        secure: false,
+    };
+    // Get domain prefix from environment variables
+    const domainPrefix = process.env.DOMAIN_PREFIX || "";
+    const pagePassword = process.env.PAGE_PASSWORD || "";
+    console.log("FTP credentials:", {
+        ...credentials,
+        password: "********", // Hide password in logs
+    });
     try {
+        // Verify local files exist before attempting upload
+        const originalExists = await fs_1.promises
+            .access(originalPath)
+            .then(() => true)
+            .catch(() => false);
+        const thumbnailExists = await fs_1.promises
+            .access(thumbnailPath)
+            .then(() => true)
+            .catch(() => false);
+        if (!originalExists || !thumbnailExists) {
+            throw new Error(`Local files not found. Original: ${originalExists}, Thumbnail: ${thumbnailExists}`);
+        }
         // Connect to FTP server using environment variables
-        await client.access({
-            host: process.env.FTP_HOST || "",
-            user: process.env.FTP_USER || "",
-            password: process.env.FTP_PASSWORD || "",
-            secure: true,
-        });
-        // Create directory structure on FTP server
-        await client.ensureDir(`${username}`);
-        await client.ensureDir(`${username}/${folder}`);
-        await client.ensureDir(`${username}/${folder}/thumbnails`);
-        // Upload original file
-        await client.uploadFrom(originalPath, `${username}/${folder}/${filename}`);
-        // Upload thumbnail
-        await client.uploadFrom(thumbnailPath, `${username}/${folder}/thumbnails/tn_${filename}`);
-        console.log(`Successfully uploaded ${filename} to FTP server`);
+        await client.access({ ...credentials, port: 21 });
+        console.log("=== FTP Upload Debug ===");
+        // Create full directory paths
+        const basePath = `/${username}`;
+        const folderPath = `${basePath}/${folder}`;
+        const thumbnailDirPath = `${folderPath}/thumbnails`;
+        console.log("Creating directory structure:");
+        console.log(`Base path: ${basePath}`);
+        console.log(`Folder path: ${folderPath}`);
+        console.log(`Thumbnail path: ${thumbnailDirPath}`);
+        // Create all directories using absolute paths
+        try {
+            await client.ensureDir(basePath);
+            console.log(`Created/verified base dir: ${basePath}`);
+        }
+        catch (err) {
+            console.error(`Error creating base dir: ${err.message}`);
+        }
+        try {
+            await client.ensureDir(folderPath);
+            console.log(`Created/verified folder dir: ${folderPath}`);
+        }
+        catch (err) {
+            console.error(`Error creating folder dir: ${err.message}`);
+        }
+        try {
+            await client.ensureDir(thumbnailDirPath);
+            console.log(`Created/verified thumbnail dir: ${thumbnailDirPath}`);
+        }
+        catch (err) {
+            console.error(`Error creating thumbnail dir: ${err.message}`);
+        }
+        // Upload original file using absolute path
+        console.log("\nUploading original file:");
+        console.log(`From local: ${originalPath}`);
+        console.log(`To FTP: ${folderPath}/${filename}`);
+        await client.uploadFrom(originalPath, `${folderPath}/${filename}`);
+        // Upload thumbnail using absolute path
+        const thumbnailFilename = `tn_${filename}`;
+        console.log("\nUploading thumbnail:");
+        console.log(`From local: ${thumbnailPath}`);
+        console.log(`To FTP: ${thumbnailDirPath}/${thumbnailFilename}`);
+        await client.uploadFrom(thumbnailPath, `${thumbnailDirPath}/${thumbnailFilename}`);
+        // Upload index.php to user folder and specific folder
+        const sourceIndexPath = path_1.default.join(__dirname, "index.php");
+        // Check if index.php exists locally
+        try {
+            await fs_1.promises.access(sourceIndexPath);
+            // Upload index.php to user folder
+            console.log("\nUploading index.php to user folder:");
+            console.log(`From local: ${sourceIndexPath}`);
+            console.log(`To FTP: ${basePath}/index.php`);
+            await client.uploadFrom(sourceIndexPath, `${basePath}/index.php`);
+            // Upload index.php to specific folder
+            // console.log("\nUploading index.php to specific folder:");
+            // console.log(`From local: ${sourceIndexPath}`);
+            // console.log(`To FTP: ${folderPath}/index.php`);
+            // await client.uploadFrom(sourceIndexPath, `${folderPath}/index.php`);
+        }
+        catch (err) {
+            console.error("Error uploading index.php:", err);
+            // Don't throw the error to avoid blocking the upload process
+        }
+        console.log("\nUpload completed successfully!");
+        console.log("======================");
     }
-    catch (error) {
-        console.error("FTP upload error:", error);
-        throw error;
+    catch (err) {
+        console.error("=== FTP Error Details ===");
+        console.error("Error Type:", err.constructor.name);
+        console.error("Error Message:", err.message);
+        console.error("Error Code:", err.code);
+        console.error("Current FTP Working Dir:", await client.pwd().catch(() => "Unknown"));
+        console.error("======================");
+        throw err;
     }
     finally {
         client.close();
@@ -201,3 +390,52 @@ app.get("/health", (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+async function optimizeToTargetSize(inputPath, outputPath, targetSizeInBytes, minQuality = 60, maxQuality = 90, maxWidth = 1600) {
+    const image = (0, sharp_1.default)(inputPath);
+    const metadata = await image.metadata();
+    let quality = maxQuality;
+    let width = metadata.width || maxWidth;
+    let currentSize = Infinity;
+    let attempts = 0;
+    const maxAttempts = 8; // Prevent infinite loops
+    // Binary search for the right quality/size balance
+    while (Math.abs(currentSize - targetSizeInBytes) > targetSizeInBytes * 0.1 &&
+        attempts < maxAttempts) {
+        const buffer = await (0, sharp_1.default)(inputPath)
+            .resize(width, undefined, { fit: "inside" })
+            .jpeg({ quality })
+            .toBuffer();
+        currentSize = buffer.length;
+        if (currentSize > targetSizeInBytes) {
+            // If file is too big, try reducing quality first
+            if (quality > minQuality) {
+                quality = Math.max(minQuality, quality - 5);
+            }
+            else {
+                // If at minimum quality, reduce dimensions
+                width = Math.max(400, Math.floor(width * 0.8));
+            }
+        }
+        else if (currentSize < targetSizeInBytes * 0.8) {
+            // If file is too small, try increasing quality
+            quality = Math.min(maxQuality, quality + 5);
+        }
+        attempts++;
+    }
+    // Final optimization with found parameters
+    return (0, sharp_1.default)(inputPath)
+        .resize(width, undefined, { fit: "inside" })
+        .jpeg({ quality })
+        .toFile(outputPath);
+}
+async function optimizeToTargetDimensions({ inputPath, outputPath, targetWidth = 1600, }) {
+    const image = (0, sharp_1.default)(inputPath);
+    const metadata = await image.metadata();
+    const width = metadata.width || targetWidth;
+    // const height = metadata.height || targetHeight;
+    return ((0, sharp_1.default)(inputPath)
+        // .resize(width, height, { fit: "inside" })
+        .resize(width)
+        .jpeg({ quality: 80 })
+        .toFile(outputPath));
+}

@@ -30,6 +30,7 @@ interface PhotoUploaderProps {
   targetSize?: number;
   folder: string;
   onFolderChange?: (folder: string) => void;
+  existingFiles?: string[];
 }
 
 interface FileWithPreview extends File {
@@ -39,6 +40,7 @@ interface FileWithPreview extends File {
   progress: number;
   folder: string;
   _file: File;
+  isDuplicate?: boolean;
 }
 
 export function PhotoUploader({
@@ -51,6 +53,7 @@ export function PhotoUploader({
   targetSize,
   folder,
   onFolderChange,
+  existingFiles = [],
 }: PhotoUploaderProps) {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -59,6 +62,8 @@ export function PhotoUploader({
   const [folders, setFolders] = useState<string[]>([folder]);
   const [newFolderName, setNewFolderName] = useState("");
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateFiles, setDuplicateFiles] = useState<FileWithPreview[]>([]);
   const [localCompressionMethod, setLocalCompressionMethod] =
     useState(compressionMethod);
   const [localTargetWidth, setLocalTargetWidth] = useState(targetWidth);
@@ -69,21 +74,32 @@ export function PhotoUploader({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const selectedFiles = Array.from(e.target.files || []);
 
+      // Check for duplicates
+      const duplicates: FileWithPreview[] = [];
       const newFiles = selectedFiles.map((file) => {
-        // Store the original file object
-        const originalFile = file;
-        // Create a new object with our custom properties
-        return {
-          ...originalFile,
+        const isDuplicate = existingFiles.includes(file.name);
+        const fileWithPreview = {
+          ...file,
           preview: URL.createObjectURL(file),
           id: `${file.name}-${Date.now()}`,
           status: "pending" as const,
           progress: 0,
           folder: folder,
-          // Store the original file for upload
-          _file: originalFile,
+          _file: file,
+          isDuplicate: isDuplicate,
         };
+
+        if (isDuplicate) {
+          duplicates.push(fileWithPreview);
+        }
+
+        return fileWithPreview;
       });
+
+      if (duplicates.length > 0) {
+        setDuplicateFiles(duplicates);
+        setDuplicateDialogOpen(true);
+      }
 
       setFiles((prev) => [...prev, ...newFiles]);
 
@@ -92,8 +108,29 @@ export function PhotoUploader({
         fileInputRef.current.value = "";
       }
     },
-    [folder]
+    [folder, existingFiles]
   );
+
+  const handleDuplicateConfirmation = (replace: boolean) => {
+    setFiles(
+      (prev) =>
+        prev
+          .map((file) => {
+            if (file.isDuplicate) {
+              if (!replace) {
+                // Remove files that shouldn't be replaced
+                return null;
+              }
+              // Keep files that should be replaced
+              return { ...file, isDuplicate: false };
+            }
+            return file;
+          })
+          .filter(Boolean) as FileWithPreview[]
+    );
+    setDuplicateDialogOpen(false);
+    setDuplicateFiles([]);
+  };
 
   const removeFile = useCallback((id: string) => {
     setFiles((prev) => {
@@ -446,6 +483,45 @@ export function PhotoUploader({
           </div>
         </div>
       )}
+
+      {/* Duplicate Files Confirmation Dialog */}
+      <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Duplicate Files Detected</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              The following files already exist in the folder:
+            </p>
+            <div className="max-h-[200px] overflow-y-auto space-y-2">
+              {duplicateFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className="flex items-center gap-2 p-2 bg-muted rounded"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  <span className="text-sm">{file._file.name}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => handleDuplicateConfirmation(false)}
+              >
+                Skip Duplicates
+              </Button>
+              <Button
+                variant="default"
+                onClick={() => handleDuplicateConfirmation(true)}
+              >
+                Replace All
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -91,6 +91,9 @@ export default function FolderPage() {
     }
   };
 
+  // Extract existing filenames
+  const existingFilenames = images.map((img) => img.name);
+
   //   if (loading) {
   //     return (
   //       <main className="min-h-screen p-8">
@@ -141,6 +144,7 @@ export default function FolderPage() {
             compressionMethod === "size" ? targetSize * 1024 : undefined
           }
           onUploadComplete={() => refreshImages()}
+          existingFiles={existingFilenames}
         />
       </div>
 

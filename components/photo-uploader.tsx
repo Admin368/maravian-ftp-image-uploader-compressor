@@ -335,6 +335,25 @@ export function PhotoUploader({
               accept="image/*"
               className="hidden"
             />
+            {files.length > 0 && (
+              <Button
+                onClick={uploadFiles}
+                disabled={isUploading}
+                className="flex items-center gap-2"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading {uploadProgress}%
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Upload All ({files.length})
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -448,23 +467,6 @@ export function PhotoUploader({
             <div className="text-sm text-muted-foreground">
               {files.length} file{files.length !== 1 ? "s" : ""} selected
             </div>
-            <Button
-              onClick={uploadFiles}
-              disabled={isUploading || files.length === 0}
-              className="flex items-center gap-2"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading {uploadProgress}%
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4" />
-                  Upload All
-                </>
-              )}
-            </Button>
           </div>
         </div>
       )}

@@ -47,3 +47,12 @@
 - [ ] Refine `optimizeToTargetSize` search algorithm for better convergence.
 - [ ] Review fixed quality (80) in `optimizeToTargetDimensions`; consider making it adaptive or configurable.
 - [ ] Clarify "thumbnail" naming convention when original files are copied.
+
+## Refactor Upload UI
+
+- [x] Move upload section to the top
+- [x] Add upload progress bar placeholder
+
+## Refactor Upload All Button Placement
+
+- [x] Move 'Upload All' button to the top section of the uploader

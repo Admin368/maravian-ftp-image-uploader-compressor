@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import imageCompression from "browser-image-compression";
 
 interface PhotoUploaderProps {
   username: string;
@@ -153,16 +154,36 @@ export function PhotoUploader({
   const uploadFiles = async () => {
     if (files.length === 0 || isUploading) return;
 
+    // *** Add the URL for your PHP script here ***
+    const phpUploadUrl = "YOUR_PHP_UPLOAD_HANDLER_URL";
+    if (phpUploadUrl === "YOUR_PHP_UPLOAD_HANDLER_URL") {
+      console.error(
+        "ERROR: PHP Upload Handler URL is not set in photo-uploader.tsx"
+      );
+      alert("Upload configuration error. Please contact the administrator.");
+      return; // Stop the upload if the URL isn't configured
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
 
-    const totalFiles = files.length;
+    const totalFiles = files.filter(
+      (f) => f.status !== "success" && f.status !== "uploading"
+    ).length;
+    if (totalFiles === 0) {
+      setIsUploading(false);
+      return;
+    }
     let completedFiles = 0;
-    const uploadedPaths: string[] = [];
+    const uploadedPaths: { original: string; thumbnail: string }[] = [];
 
-    // Update files status to uploading
+    // Update pending files status to uploading
     setFiles((prev) =>
-      prev.map((file) => ({ ...file, status: "uploading" as const }))
+      prev.map((file) =>
+        file.status === "pending"
+          ? { ...file, status: "uploading" as const }
+          : file
+      )
     );
 
     // Fetch the API key first
@@ -170,71 +191,111 @@ export function PhotoUploader({
     try {
       const keyResponse = await fetch("/api/upload-key");
       if (!keyResponse.ok) {
-        throw new Error("Failed to get API key");
+        const errorText = await keyResponse.text();
+        throw new Error(
+          `Failed to get API key: ${keyResponse.status} ${errorText}`
+        );
       }
       const keyData = await keyResponse.json();
+      if (!keyData.key) {
+        throw new Error("API key not found in response");
+      }
       apiKey = keyData.key;
+      console.log("Obtained API Key:", apiKey);
     } catch (error) {
       console.error("Error fetching API key:", error);
       setFiles((prev) =>
-        prev.map((file) => ({ ...file, status: "error" as const }))
+        prev.map((file) =>
+          file.status === "uploading"
+            ? { ...file, status: "error" as const }
+            : file
+        )
       );
       setIsUploading(false);
+      alert(
+        `Failed to get upload key: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       return;
     }
 
-    for (const file of files) {
+    const filesToUpload = files.filter((f) => f.status === "uploading");
+
+    for (const file of filesToUpload) {
       try {
-        const formData = new FormData();
-        formData.append(`file`, file._file);
-        formData.append(
-          "metadata",
-          JSON.stringify({
-            username,
-            folder: file.folder,
-            compressionMethod,
-            targetWidth,
-            targetHeight,
-          })
+        setFiles((prev) =>
+          prev.map(
+            (f) => (f.id === file.id ? { ...f, progress: 10 } : f) // Indicate processing start
+          )
         );
 
-        console.log("Uploading file:", {
-          name: file._file.name,
-          type: file._file.type,
-          size: file._file.size,
-          metadata: {
-            username,
-            folder: file.folder,
-            compressionMethod,
-            targetWidth,
-            targetHeight,
-          },
+        // --- Thumbnail Generation ---
+        console.log(`Compressing ${file.name}...`);
+        const thumbnailOptions = {
+          maxSizeMB: 0.2, // Aim for ~200KB thumbnail
+          maxWidthOrHeight: 300, // Resize to max 300px on the longest side
+          useWebWorker: true,
+        };
+        const thumbnailFile = await imageCompression(
+          file._file,
+          thumbnailOptions
+        );
+        const thumbnailBlob = new Blob([thumbnailFile], {
+          type: thumbnailFile.type,
         });
-        console.log(uploadServerUrl);
 
-        const response = await fetch(`${uploadServerUrl}/upload`, {
+        setFiles((prev) =>
+          prev.map(
+            (f) => (f.id === file.id ? { ...f, progress: 30 } : f) // Indicate thumbnail done
+          )
+        );
+        // ---------------------------
+
+        // --- Direct Upload to PHP ---
+        const formData = new FormData();
+        formData.append("apiKey", apiKey);
+        // Use specific names expected by the PHP script
+        formData.append("originalFile", file._file, file._file.name);
+        formData.append(
+          "thumbnailFile",
+          thumbnailBlob,
+          `thumb_${file._file.name}`
+        ); // Send as blob with a distinct name
+
+        console.log(
+          `Uploading ${file.name} and its thumbnail to ${phpUploadUrl}...`
+        );
+
+        const response = await fetch(phpUploadUrl, {
           method: "POST",
           body: formData,
-          headers: {
-            "x-api-key": apiKey,
-          },
-          credentials: "include",
-          mode: "cors",
+          // No 'Content-Type' header needed for FormData, browser sets it with boundary
         });
+        // --------------------------
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            `Upload failed: ${response.status} ${response.statusText}${
-              errorData.error ? ` - ${errorData.error}` : ""
-            }`
-          );
+        setFiles((prev) =>
+          prev.map(
+            (f) => (f.id === file.id ? { ...f, progress: 70 } : f) // Indicate upload request sent
+          )
+        );
+
+        const responseData = await response.json();
+
+        if (!response.ok || !responseData.success) {
+          const errorMessage =
+            responseData.message ||
+            `Upload failed with status: ${response.status}`;
+          throw new Error(errorMessage);
         }
 
-        const data = await response.json();
-        uploadedPaths.push(data.path);
+        console.log(`Successfully uploaded ${file.name}:`, responseData);
+        uploadedPaths.push({
+          original: responseData.originalUrl,
+          thumbnail: responseData.thumbnailUrl,
+        });
 
-        // Update individual file status
+        // Update individual file status to success
         setFiles((prev) =>
           prev.map((f) =>
             f.id === file.id
@@ -246,24 +307,32 @@ export function PhotoUploader({
         completedFiles++;
         setUploadProgress(Math.round((completedFiles / totalFiles) * 100));
       } catch (error) {
-        console.error("Error uploading file:", error);
-
-        // Update file status to error
+        console.error(`Error processing/uploading file ${file.name}:`, error);
+        // Update individual file status to error
         setFiles((prev) =>
           prev.map((f) =>
             f.id === file.id ? { ...f, status: "error" as const } : f
           )
         );
-
-        completedFiles++;
-        setUploadProgress(Math.round((completedFiles / totalFiles) * 100));
+        // Optionally: Decide if one error stops all uploads or continue with others
+        // For now, we continue with the next file but report the error.
+        alert(
+          `Error uploading ${file.name}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
       }
     }
 
     setIsUploading(false);
+    setUploadProgress(100);
 
-    if (onUploadComplete) {
-      onUploadComplete(uploadedPaths);
+    if (onUploadComplete && uploadedPaths.length > 0) {
+      // Adapt the callback if necessary, now provides original and thumb paths
+      // onUploadComplete(uploadedPaths.map(p => p.original)); // Example: only pass original paths
+      console.log("All uploads finished. Uploaded paths:", uploadedPaths);
+      // You might want to clear the file list after successful uploads
+      // setFiles([]);
     }
   };
 

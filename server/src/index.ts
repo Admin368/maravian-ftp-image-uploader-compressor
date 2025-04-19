@@ -103,8 +103,6 @@ const upload = multer({
     console.log("Multer processing file:", {
       originalname: file.originalname,
       mimetype: file.mimetype,
-      fieldname: file.fieldname,
-      size: file.size,
     });
 
     // Accept only image files
@@ -154,7 +152,7 @@ async function copyIndexPhpToFolder(folderPath: string) {
     // Check if index.php already exists in the target folder
     try {
       await fsPromises.access(targetIndexPath);
-      console.log(`index.php already exists in ${folderPath}`);
+      // console.log(`index.php already exists in ${folderPath}`); // Removed
       return; // File already exists, no need to copy
     } catch (err) {
       // File doesn't exist, proceed with copying
@@ -176,8 +174,8 @@ function isValidUsername(username: string): boolean {
 // Endpoint for file uploads
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    console.log("Request body:", req.body);
-    console.log("Request file:", req.file);
+    // console.log("Request body:", req.body); // Removed
+    // console.log("Request file:", req.file); // Removed
 
     const compression_method = req.body.compression_method || "dimension"; // dimension or size
     const target_size = req.body.target_size || 1 * 1024 * 1024; // 1MB
@@ -189,24 +187,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     const username = metadata.username;
     const folder = metadata.folder;
 
-    console.log("=== Upload Request Debug ===");
-    console.log("Metadata:", metadata);
-    console.log(
-      "File details:",
-      file
-        ? {
-            fieldname: file.fieldname,
-            originalname: file.originalname,
-            encoding: file.encoding,
-            mimetype: file.mimetype,
-            size: file.size,
-            destination: file.destination,
-            filename: file.filename,
-            path: file.path,
-          }
-        : "No file"
-    );
-    console.log("=========================");
+    // Removed debug block
 
     if (!file || !username || !folder) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -228,6 +209,11 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     await fsPromises.rename(file.path, finalPath);
     file.path = finalPath;
 
+    // Get reliable file size using fs.promises.stat
+    const fileStats = await fsPromises.stat(finalPath);
+    const fileSize = fileStats.size;
+    console.log("Reliable fileSize:", fileSize);
+
     // Validate username
     if (!isValidUsername(username)) {
       return res.status(400).json({ error: "Invalid username format" });
@@ -242,10 +228,24 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     const thumbnailPath = path.join(thumbnailDir, thumbnailFilename);
 
     // Process image and create thumbnail
-    const imageInfo = await sharp(file.path).metadata();
+    // Removed sharp metadata call previously here
+    // const imageInfo = await sharp(file.path).metadata();
+    // const fileSize = imageInfo.size;
+    // console.log("fileSize", fileSize);
 
-    if (imageInfo.size && imageInfo.size > 2 * 1024 * 1024) {
-      // Optimize large images
+    // Use the reliable fileSize obtained earlier
+    const ONE_MB = 1 * 1024 * 1024;
+    if (fileSize && fileSize < ONE_MB) {
+      // If file is less than 1MB, copy it directly to thumbnails
+      await fsPromises.copyFile(file.path, thumbnailPath);
+      console.log(
+        `Copied original file to thumbnail path as size (${fileSize} bytes) is less than 1MB.`
+      );
+    } else {
+      // If file is 1MB or larger, optimize it
+      console.log(
+        `File size (${fileSize} bytes) is >= 1MB, applying optimization.`
+      );
       switch (compression_method) {
         case "size":
           await optimizeToTargetSize(file.path, thumbnailPath, target_size);
@@ -258,9 +258,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
             // targetHeight: target_height,
           });
       }
-    } else {
-      // Create regular thumbnail for smaller images
-      await sharp(file.path).resize(400).toFile(thumbnailPath);
     }
 
     // Upload to FTP server
@@ -366,14 +363,14 @@ async function uploadToFtp(
     }
 
     // Upload original file using absolute path
-    console.log("\nUploading original file:");
+    console.log("Uploading original file:");
     console.log(`From local: ${originalPath}`);
     console.log(`To FTP: ${folderPath}/${filename}`);
     await client.uploadFrom(originalPath, `${folderPath}/${filename}`);
 
     // Upload thumbnail using absolute path
     const thumbnailFilename = `tn_${filename}`;
-    console.log("\nUploading thumbnail:");
+    console.log("Uploading thumbnail:");
     console.log(`From local: ${thumbnailPath}`);
     console.log(`To FTP: ${thumbnailDirPath}/${thumbnailFilename}`);
     await client.uploadFrom(
@@ -389,22 +386,22 @@ async function uploadToFtp(
       await fsPromises.access(sourceIndexPath);
 
       // Upload index.php to user folder
-      console.log("\nUploading index.php to user folder:");
+      console.log("Uploading index.php to user folder:");
       console.log(`From local: ${sourceIndexPath}`);
       console.log(`To FTP: ${basePath}/index.php`);
       await client.uploadFrom(sourceIndexPath, `${basePath}/index.php`);
 
       // Upload index.php to specific folder
-      // console.log("\nUploading index.php to specific folder:");
-      // console.log(`From local: ${sourceIndexPath}`);
-      // console.log(`To FTP: ${folderPath}/index.php`);
-      // await client.uploadFrom(sourceIndexPath, `${folderPath}/index.php`);
+      // console.log("Uploading index.php to specific folder:"); // Removed
+      // console.log(`From local: ${sourceIndexPath}`); // Removed
+      // console.log(`To FTP: ${folderPath}/index.php`); // Removed
+      // await client.uploadFrom(sourceIndexPath, `${folderPath}/index.php`); // Removed
     } catch (err) {
       console.error("Error uploading index.php:", err);
       // Don't throw the error to avoid blocking the upload process
     }
 
-    console.log("\nUpload completed successfully!");
+    console.log("Upload completed successfully!");
     console.log("======================");
   } catch (err: any) {
     console.error("=== FTP Error Details ===");

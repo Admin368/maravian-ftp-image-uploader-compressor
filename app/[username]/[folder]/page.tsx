@@ -157,42 +157,6 @@ export default function FolderPage() {
           >
             {showThumbnails ? "Show Full Images" : "Show Thumbnails"}
           </button>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium">Compression:</label>
-            <select
-              value={compressionMethod}
-              onChange={(e) =>
-                setCompressionMethod(e.target.value as "size" | "dimension")
-              }
-              className="border rounded px-2 py-1"
-            >
-              <option value="dimension">By Dimension</option>
-              <option value="size">By Size</option>
-            </select>
-            {compressionMethod === "dimension" ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={targetWidth}
-                  onChange={(e) => setTargetWidth(Number(e.target.value))}
-                  className="w-20 border rounded px-2 py-1"
-                  placeholder="Width"
-                />
-                <span className="text-sm">px</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={targetSize}
-                  onChange={(e) => setTargetSize(Number(e.target.value))}
-                  className="w-20 border rounded px-2 py-1"
-                  placeholder="Size"
-                />
-                <span className="text-sm">KB</span>
-              </div>
-            )}
-          </div>
         </div>
         <button
           onClick={refreshImages}

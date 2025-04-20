@@ -64,11 +64,12 @@ export function PhotoUploader({
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [duplicateFiles, setDuplicateFiles] = useState<FileWithPreview[]>([]);
-  const [localCompressionMethod, setLocalCompressionMethod] =
-    useState(compressionMethod);
+  const [localCompressionMethod, setLocalCompressionMethod] = useState<
+    "size" | "dimension"
+  >("size");
   const [localTargetWidth, setLocalTargetWidth] = useState(targetWidth);
   const [localTargetHeight, setLocalTargetHeight] = useState(targetHeight);
-  const [localTargetSize, setLocalTargetSize] = useState(targetSize || 1024);
+  const [localTargetSize, setLocalTargetSize] = useState(1000 * 1024);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -192,11 +193,16 @@ export function PhotoUploader({
           JSON.stringify({
             username,
             folder: file.folder,
-            compressionMethod,
-            targetWidth,
-            targetHeight,
+            compression_method: localCompressionMethod,
+            target_width: localTargetWidth,
+            target_size: localTargetSize,
           })
         );
+
+        // Add compression settings directly to FormData as well
+        formData.append("compression_method", localCompressionMethod);
+        formData.append("target_width", localTargetWidth.toString());
+        formData.append("target_size", localTargetSize.toString());
 
         console.log("Uploading file:", {
           name: file._file.name,
@@ -205,9 +211,9 @@ export function PhotoUploader({
           metadata: {
             username,
             folder: file.folder,
-            compressionMethod,
-            targetWidth,
-            targetHeight,
+            compression_method: localCompressionMethod,
+            target_width: localTargetWidth,
+            target_size: localTargetSize,
           },
         });
         console.log(uploadServerUrl);
@@ -329,6 +335,25 @@ export function PhotoUploader({
               accept="image/*"
               className="hidden"
             />
+            {files.length > 0 && (
+              <Button
+                onClick={uploadFiles}
+                disabled={isUploading}
+                className="flex items-center gap-2"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading {uploadProgress}%
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Upload All ({files.length})
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -442,23 +467,6 @@ export function PhotoUploader({
             <div className="text-sm text-muted-foreground">
               {files.length} file{files.length !== 1 ? "s" : ""} selected
             </div>
-            <Button
-              onClick={uploadFiles}
-              disabled={isUploading || files.length === 0}
-              className="flex items-center gap-2"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading {uploadProgress}%
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4" />
-                  Upload All
-                </>
-              )}
-            </Button>
           </div>
         </div>
       )}

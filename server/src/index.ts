@@ -22,7 +22,7 @@ declare global {
 }
 
 const app = express();
-const PORT = process.env.PORT || 6061;
+const PORT = process.env.PORT || 6051;
 
 // Enable CORS
 app.use(

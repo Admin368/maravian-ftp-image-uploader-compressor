@@ -22,13 +22,14 @@ declare global {
 }
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 6061;
 
 // Enable CORS
 app.use(
   cors({
     origin: [
       "https://uploader.maravian.com",
+      "https://main.maravian.com",
       "https://uploader.maravian.online",
       "https://main.maravian.online",
       "http://192.168.1.168:3000",

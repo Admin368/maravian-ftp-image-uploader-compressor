@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import {redirect} from "next/navigation";
 
 export default function UsernamePage({
   params,
@@ -12,6 +13,7 @@ export default function UsernamePage({
   const [newFolderName, setNewFolderName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
 
   useEffect(() => {
     fetchFolders();
@@ -36,8 +38,9 @@ export default function UsernamePage({
 
   const createFolder = async () => {
     if (!newFolderName) return;
+    redirect(`/${params.username}/${newFolderName}`);
     // Here you would make an API call to create the folder
-    setNewFolderName("");
+    // setNewFolderName("");
   };
 
   if (loading) {

@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function Home() {
   // This would be replaced with actual API call
-  const usernames = ["paul_photos"]; // Example username
+  const usernames = ["wicf"]; // Example username
 
   return (
     <main className="min-h-screen p-8">

@@ -69,7 +69,7 @@ export function PhotoUploader({
   >("size");
   const [localTargetWidth, setLocalTargetWidth] = useState(targetWidth);
   const [localTargetHeight, setLocalTargetHeight] = useState(targetHeight);
-  const [localTargetSize, setLocalTargetSize] = useState(1000 * 1024);
+  const [localTargetSize, setLocalTargetSize] = useState(500 * 1024);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
